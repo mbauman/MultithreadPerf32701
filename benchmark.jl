@@ -1,9 +1,4 @@
 using Serialization, InteractiveUtils, BenchmarkTools
-println()
-@info "SolidStateDetectors Benchmark"
-println()
-versioninfo()
-println()
 
 const rb_even = Int(2)
 const rb_odd  = Int(1)
@@ -11,32 +6,11 @@ const rb_odd  = Int(1)
 const rb_bool_even = true
 const rb_bool_odd  = false
 const update_bit   = 0x01
-@inline function nidx( rbidx::Int, ::Val{true}, ::Val{true})::Int
-   return (rbidx - 1) * 2
-end
-@inline function nidx( rbidx::Int, ::Val{true}, ::Val{false})::Int
-   return (rbidx - 1) * 2 - 1
-end
+
 @inline function nidx( rbidx::Int, ::Val{true}, b::Bool)::Int
    return (rbidx - 1) * 2 - !b
 end
-@inline function nidx( rbidx::Int, ::Val{false}, ::Val{true})::Int
-   return (rbidx - 1) * 2 - 1
-end
-@inline function nidx( rbidx::Int, ::Val{false}, ::Val{false})::Int
-   return (rbidx - 1) * 2
-end
-@inline function nidx( rbidx::Int, ::Val{false}, b::Bool)::Int
-   return (rbidx - 1) * 2 - b
-end
-
-"""
-    update!(fssrb::PotentialSimulationSetupRB{T, 3, 4, S}, RBT::DataType)::Nothing
-
-Loop over `even` grid points. A point is `even` if the sum of its cartesian indicies (of the not extended grid) is even.
-Even points get the red black index (rbi) = 2. ( -> rbpotential[ inds..., rbi ]).
-"""
-@fastmath function update!( fssrb, use_nthreads::Int,
+@fastmath function update!( fssrb,
                             update_even_points::Val{even_points},
                             depletion_handling::Val{depletion_handling_enabled},
                             bulk_is_ptype::Val{_bulk_is_ptype},
@@ -48,23 +22,13 @@ Even points get the red black index (rbi) = 2. ( -> rbpotential[ inds..., rbi ])
         gw2 = fssrb.geom_weights[2].weights  # φ or y
         gw3 = fssrb.geom_weights[3].weights  # z or z
 
-        # for idx3 in 2:(size(fssrb.potential, 3) - 1)
         Base.Threads.@threads for idx3 in 2:(size(fssrb.potential, 3) - 1)
-        # @onthreads 1:use_nthreads for idx3 in workpart(2:(size(fssrb.potential, 3) - 1), 1:use_nthreads, Base.Threads.threadid())
             innerloops!( idx3, rb_tar_idx, rb_src_idx, gw1, gw2, gw3, fssrb, update_even_points, depletion_handling, bulk_is_ptype, is_weighting_potential)
         end
     end
     nothing
 end
 
-"""
-    innerloops!(  ir::Int, rb_tar_idx::Int, rb_src_idx::Int, gw_r::Array{T, 2}, gw_φ::Array{T, 2}, gw_z::Array{T, 2}, fssrb::PotentialSimulationSetupRB{T, 3, 4, :cylindrical},
-                                update_even_points::Val{even_points},
-                                depletion_handling::Val{depletion_handling_enabled},
-                                bulk_is_ptype::Val{_bulk_is_ptype}  )::Nothing where {T, even_points, depletion_handling_enabled, _bulk_is_ptype}
-
-(Vectorized) inner loop for Cylindrical coordinates. This function does all the work in the field calculation.
-"""
 @fastmath function innerloops!( ir::Int, rb_tar_idx::Int, rb_src_idx::Int, gw_r::Array{T, 2}, gw_φ::Array{T, 2}, gw_z::Array{T, 2}, fssrb,
                                 update_even_points::Val{even_points},
                                 depletion_handling::Val{depletion_handling_enabled},
@@ -248,60 +212,7 @@ end
     end # inbounds
 end
 
-
-function update!(   fssrb; use_nthreads::Int = Base.Threads.nthreads(),
-                    depletion_handling::Val{depletion_handling_enabled} = Val{false}(), only2d::Val{only_2d} = Val{false}(),
-                    is_weighting_potential::Val{_is_weighting_potential} = Val{false}())::Nothing where {T, depletion_handling_enabled, only_2d, _is_weighting_potential}
-    update!(fssrb, use_nthreads, Val{true}(), depletion_handling, Val{fssrb.bulk_is_ptype}(), is_weighting_potential)
-    apply_boundary_conditions!(fssrb, Val{true}(), only2d)
-    update!(fssrb, use_nthreads, Val{false}(), depletion_handling, Val{fssrb.bulk_is_ptype}(), is_weighting_potential)
-    apply_boundary_conditions!(fssrb, Val{false}(), only2d)
-    nothing
-end
-
-T = Float32
-init_grid_size = (10, 10, 10)
-init_grid_spacing = missing
-convergence_limit = T(5e-6)
-max_refinements = 3
-refinement_limits = T[1e-4, 1e-4, 1e-4]
-min_grid_spacing = T[1e-4, 1e-4, 1e-4]
-depletion_handling = false
-use_nthreads = parse(Int, ENV["JULIA_NUM_THREADS"])
-sor_consts = T[1.4, 1.85]
-max_n_iterations = 10000
-verbose = false
-n_iterations_between_checks = 500
-refine = max_refinements > 0 ? true : false
-only_2d = true
 fssrb = open(deserialize, "data.jls")
 
-gw1 = fssrb.geom_weights[1].weights  # r or x
-gw2 = fssrb.geom_weights[2].weights  # φ or y
-gw3 = fssrb.geom_weights[3].weights  # z or z
-
-even_points = true
-update_even_points = Val{even_points}()
-depletion_handling = Val{false}()
-rb_tar_idx, rb_src_idx = even_points ? (rb_even, rb_odd) : (rb_odd, rb_even)
-# for idx3 in 2:(size(fssrb.potential, 3) - 1)
-idx3 = 2
-bulk_is_ptype = Val{fssrb.bulk_is_ptype}()
-is_weighting_potential = Val{false}()
-
-innerloops!(idx3, rb_tar_idx, rb_src_idx, gw1, gw2, gw3,
-            fssrb, update_even_points, depletion_handling,
-            bulk_is_ptype, is_weighting_potential)
-@info "Innerloop:"
-@btime innerloops!(idx3, rb_tar_idx, rb_src_idx, gw1, gw2, gw3,
-            fssrb, update_even_points, depletion_handling,
-            bulk_is_ptype, is_weighting_potential)
-
-
-
-
-update!(fssrb, use_nthreads, update_even_points,
-                            depletion_handling, bulk_is_ptype, is_weighting_potential)
-@info "update!: $(use_nthreads) threads"
-@btime update!(fssrb, use_nthreads, update_even_points,
-                            depletion_handling, bulk_is_ptype, is_weighting_potential)
+@info "$(VERSION): $(Threads.nthreads()) threads"
+@btime update!(fssrb, Val{true}(), Val{false}(), Val{false}(), Val{false}())
