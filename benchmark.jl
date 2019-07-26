@@ -1,4 +1,4 @@
-using Serialization, InteractiveUtils, BenchmarkTools
+using Serialization, BenchmarkTools
 
 const rb_even = Int(2)
 const rb_odd  = Int(1)
@@ -10,7 +10,7 @@ const update_bit   = 0x01
 @inline function nidx( rbidx::Int, ::Val{true}, b::Bool)::Int
    return (rbidx - 1) * 2 - !b
 end
-@fastmath function update!( fssrb,
+function update!( fssrb,
                             update_even_points::Val{even_points},
                             depletion_handling::Val{depletion_handling_enabled},
                             bulk_is_ptype::Val{_bulk_is_ptype},
@@ -29,7 +29,7 @@ end
     nothing
 end
 
-@fastmath function innerloops!( ir::Int, rb_tar_idx::Int, rb_src_idx::Int, gw_r::Array{T, 2}, gw_φ::Array{T, 2}, gw_z::Array{T, 2}, fssrb,
+function innerloops!( ir::Int, rb_tar_idx::Int, rb_src_idx::Int, gw_r::Array{T, 2}, gw_φ::Array{T, 2}, gw_z::Array{T, 2}, fssrb,
                                 update_even_points::Val{even_points},
                                 depletion_handling::Val{depletion_handling_enabled},
                                 bulk_is_ptype::Val{_bulk_is_ptype},
@@ -215,4 +215,6 @@ end
 fssrb = open(deserialize, "data.jls")
 
 @info "$(VERSION): $(Threads.nthreads()) threads"
-@btime update!(fssrb, Val{true}(), Val{false}(), Val{false}(), Val{false}())
+b = @benchmark update!(fssrb, Val{true}(), Val{false}(), Val{false}(), Val{false}())
+display(b)
+exit(minimum(b).time > 10_000)
