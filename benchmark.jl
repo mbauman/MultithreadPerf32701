@@ -1,10 +1,9 @@
+using Serialization, InteractiveUtils, BenchmarkTools
 println()
 @info "SolidStateDetectors Benchmark"
 println()
 versioninfo()
 println()
-using Serialization
-using BenchmarkTools
 
 const rb_even = Int(2)
 const rb_odd  = Int(1)
@@ -261,12 +260,8 @@ function update!(   fssrb; use_nthreads::Int = Base.Threads.nthreads(),
 end
 
 T = Float32
-configfilename = SolidStateDetectors.SSD_examples[:InvertedCoax];
-sim = Simulation{T}(SSD_examples[:Coax]);
-detector = sim.detector
 init_grid_size = (10, 10, 10)
 init_grid_spacing = missing
-grid = SolidStateDetectors.Grid(detector, init_grid_size = init_grid_size, init_grid_spacing = init_grid_spacing)
 convergence_limit = T(5e-6)
 max_refinements = 3
 refinement_limits = T[1e-4, 1e-4, 1e-4]
@@ -278,22 +273,17 @@ max_n_iterations = 10000
 verbose = false
 n_iterations_between_checks = 500
 refine = max_refinements > 0 ? true : false
-only_2d = length(grid.axes[2]) == 1 ? true : false
-# calculate_electric_potential!(sim, init_grid_size = (40, 10, 40),
-#                                 use_nthreads = 1, max_refinements = 0)
+only_2d = true
+fssrb = open(deserialize, "data.jls")
 
-fssrb_ = SolidStateDetectors.PotentialSimulationSetupRB(detector, grid);
-fssrb = (;[x=>getfield(fssrb_,x) for x in fieldnames(typeof(fssrb_)) if !in(x, (:grid, :geom_weights))]...);
-
-gw1 = Float32[0.5 0.4375001 0.5333314 0.5000051 0.49999422 0.5000054 0.49999413 0.5000054 0.30434027 0.56250536 0.94117653; 0.5 0.56249994 0.46666864 0.49999487 0.5000058 0.49999455 0.50000584 0.49999455 0.69565976 0.43749467 0.058823477; 2.0 0.888889 0.46874812 0.33333492 0.24999994 0.20000046 0.16666666 0.14285737 0.089843825 0.05925864 0.53124994; 0.5 1.7857138 2.5000157 3.4999547 4.5000453 5.499932 6.5000677 7.499909 18.786152 15.500015 1.5; -0.0 0.5 1.7857138 2.5000157 3.4999547 4.5000453  5.499932 6.5000677 7.499909 18.786152 15.500015; 3.125e-6 2.0987658e-5 3.7615562e-5 5.925935e-5 7.9012425e-5 9.876555e-5 0.000118518714 0.00013827183 0.00011158403 8.364115e-5 0.0010492187]  # r or x
-gw2 = Float32[0.5 0.88539994 0.5303906 0.5000026 0.5000002 0.49999574 0.50000405 0.5 0.49999565 0.33333653 0.49999997 0.49999997 0.0; 0.5 0.114600115 0.46960935 0.4999974 0.4999999 0.50000423 0.4999959 0.5 0.50000435 0.66666347 0.49999997 0.49999997 0.0; 0.00666716 0.029088803 0.05484392 0.058177702 0.058177993 0.058177516 0.05817747 0.058178008 0.0581775 0.043632954 0.029088855 0.029088974 0.0; 149.9889 149.9889 19.41354 17.188805 17.188631 17.188625 17.188921 17.188635 17.188625 17.188925 34.37739 34.377357 34.377357]  # φ or y
-gw3 = Float32[0.090909086 0.33333334 0.59090835 0.5987666 0.04433465 0.95631045 0.52415663 0.039822955 0.95082045 0.4629611 0.37500083 0.6399998 0.5555549 0.90000004 0.0; 0.9090908 0.6666667 0.40909162 0.40123335 0.9556653 0.043689575 0.47584334 0.96017706 0.049179584 0.53703886 0.62499917 0.36000016 0.4444451 0.1 0.0; 0.055 0.0075 0.0061111 0.009 0.0056388993 0.0057222005 0.011500003 0.0062777996 0.005083345 0.009000003 0.0066666454 0.006944455 0.009999998 0.055555552 0.0; 10.0 100.0 200.0 138.46198 92.78331 2000.0034 91.370926 82.94899 2000.0109 103.44792 120.00049 199.9999 112.499855 90.00007 10.000001]  # z or z
-fssrb = (;geom_weights=((weights=gw1,),(weights=gw2,),(weights=gw3,)), fssrb...,)
+gw1 = fssrb.geom_weights[1].weights  # r or x
+gw2 = fssrb.geom_weights[2].weights  # φ or y
+gw3 = fssrb.geom_weights[3].weights  # z or z
 
 even_points = true
 update_even_points = Val{even_points}()
 depletion_handling = Val{false}()
-rb_tar_idx, rb_src_idx = even_points ? (SSD.rb_even, SSD.rb_odd) : (SSD.rb_odd, SSD.rb_even)
+rb_tar_idx, rb_src_idx = even_points ? (rb_even, rb_odd) : (rb_odd, rb_even)
 # for idx3 in 2:(size(fssrb.potential, 3) - 1)
 idx3 = 2
 bulk_is_ptype = Val{fssrb.bulk_is_ptype}()
@@ -315,13 +305,3 @@ update!(fssrb, use_nthreads, update_even_points,
 @info "update!: $(use_nthreads) threads"
 @btime update!(fssrb, use_nthreads, update_even_points,
                             depletion_handling, bulk_is_ptype, is_weighting_potential)
-
-# @code_llvm SolidStateDetectors.innerloops!(idx3, rb_tar_idx, rb_src_idx, gw1, gw2, gw3,
-#             fssrb, update_even_points, depletion_handling,
-#             bulk_is_ptype, is_weighting_potential)
-# @code_warntype SolidStateDetectors.innerloops!(idx3, rb_tar_idx, rb_src_idx, gw1, gw2, gw3,
-#             fssrb, update_even_points, depletion_handling,
-#             bulk_is_ptype, is_weighting_potential)
-# @btime SolidStateDetectors.innerloops!(idx3, rb_tar_idx, rb_src_idx, gw1, gw2, gw3,
-#             fssrb, update_even_points, depletion_handling,
-#             bulk_is_ptype, is_weighting_potential)
